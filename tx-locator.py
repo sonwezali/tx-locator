@@ -1,9 +1,9 @@
 ###################################################################
 #|                                                 @sonwezali    |#
 #|                                                               |#
-#| this script takes the coordinate [(x, y, z)] of a tx and some |#
+#| this script takes the coordinates [(x, y, z)] of a tx and some|#
 #| angle in degrees as the inputs and then computes a new tx     |#
-#| coordinate according to the inputs                            |#
+#| coordinates according to the inputs                           |#
 #|                                                               |#
 #|                                                               |#
 ###################################################################
@@ -15,120 +15,80 @@ def enter_valid():
          )
 
 def take_coordinate_input():
-    x_coordinate, y_coordinate, z_coordinate = 0, 0, 0
-
-    is_input_true = False
-    while (not is_input_true):
-        x_coordinate = input("enter the x-coordinate of the tx: ")
-        if (len(x_coordinate) == 0):
-            enter_valid()
-            continue
-
-        dot_index = x_coordinate.find(".")
-        if (dot_index > 0):
-            if (not x_coordinate[:dot_index].isnumeric()) or (not x_coordinate[dot_index + 1:].isnumeric()):
+    def parse_float_input(prompt):
+        while True:
+            value = input(prompt)
+            try:
+                return float(value)
+            except ValueError:
                 enter_valid()
-                continue
 
-        if (not x_coordinate.isnumeric()):
-            enter_valid()
-            continue
-
-        x_coordinate = float(x_coordinate)
-    
-        y_coordinate = input("enter the y-coordinate of the tx: ")
-        if (len(y_coordinate) == 0):
-            enter_valid()
-            continue
-
-        dot_index = y_coordinate.find(".")
-        if (dot_index > 0):
-            if (not y_coordinate[:dot_index].isnumeric()) or (not y_coordinate[dot_index + 1:].isnumeric()):
-                enter_valid()
-                continue
-
-        if (not y_coordinate.isnumeric()):
-            enter_valid()
-            continue
-
-        y_coordinate = float(y_coordinate)
-    
-        z_coordinate = input("enter the z-coordinate of the tx: ")
-        if (len(z_coordinate) == 0):
-            enter_valid()
-            continue
-
-        dot_index = z_coordinate.find(".")
-        if (dot_index > 0):
-            if (not z_coordinate[:dot_index].isnumeric()) or (not z_coordinate[dot_index + 1:].isnumeric()):
-                enter_valid()
-                continue
-
-        if (not z_coordinate.isnumeric()):
-            enter_valid()
-            continue
-
-        z_coordinate = float(z_coordinate)
-        is_input_true = True
+    x_coordinate = parse_float_input("enter the x-coordinate of the tx: ")
+    y_coordinate = parse_float_input("enter the y-coordinate of the tx: ")
+    z_coordinate = parse_float_input("enter the z-coordinate of the tx: ")
 
     return x_coordinate, y_coordinate, z_coordinate
 
 def take_angle_input():
-    angle = 0
-
-    is_input_true = False
-    while (not is_input_true):
+    while True:
         angle = input("enter the angle between txs in degrees (an integer): ")
-        if (not angle.isnumeric()):
+        try:
+            angle = int(angle)
+            if angle < 0:
+                raise ValueError
+            return angle % 360
+        except ValueError:
             enter_valid()
-            continue
-        elif (int(angle) < 0):
-            enter_valid()
-            continue
-
-        angle = int(angle)
-        is_input_true = True
-
-    if (int(angle) > 360):
-        angle %= 360
-
-    return angle
 
 def take_distance_input(default_distance):
-    distance = default_distance 
-
-    is_input_true = False
-    while (not is_input_true):
-        distance = input("enter the distance between the second tx and the center of the rx: ") 
-        if (len(distance) == 0):
+    while True:
+        distance = input("enter the distance between the second tx and the center of the rx: ")
+        if len(distance) == 0:
             print("\n~~~~~~choosing the distance same as the distance between the first tx and the rx~~~~~~\n")
-            distance = default_distance
-            is_input_true = True
-            continue
-
-        dot_index = distance.find(".")
-        if (dot_index > 0):
-            if (not distance[:dot_index].isnumeric()) or (not distance[dot_index + 1:].isnumeric()):
-                enter_valid()
-                continue
-
-        if (not distance.isnumeric()):
+            return default_distance
+        try:
+            return float(distance)
+        except ValueError:
             enter_valid()
-            continue
-
-        distance = float(distance)
-        is_input_true = True
-        
-    return distance
 
 def calculate_new_tx(x0, y0, z0, alpha, d):
-    beta = np.rad2deg(np.arctan(y0/x0))
-    new_tx_angle_rad = (alpha + beta) * np.pi/180.0
-    x = np.sqrt(d**2 - z0**2) * np.cos(new_tx_angle_rad)
-    y = np.sqrt(d**2 - z0**2) * np.sin(new_tx_angle_rad)
-    z = z0
+    initial_vector = np.array([x0, y0, z0])
+    initial_distance = np.linalg.norm(initial_vector)
+    initial_vector_normalized = initial_vector/initial_distance
 
-    return x, y, z
+    # calculate rotation axis (cross product of initial vector and z-axis)
+    rotation_axis = np.cross(initial_vector_normalized, np.array([0, 0, 1]))
+    if np.linalg.norm(rotation_axis) == 0:
+        # arbitrary orthogonal axis if initial vector is along z-axis (x-axis in this case)
+        rotation_axis = np.array([1, 0, 0])  
+    rotation_axis_normalized = rotation_axis / np.linalg.norm(rotation_axis)
+
+    # calculate rotation matrix using Rodrigues' rotation formula
+    alpha_rad = np.deg2rad(alpha)
+    K = np.array([[0, -rotation_axis_normalized[2], rotation_axis_normalized[1]],
+                  [rotation_axis_normalized[2], 0, -rotation_axis_normalized[0]],
+                  [-rotation_axis_normalized[1], rotation_axis_normalized[0], 0]])
+    R = np.eye(3) + np.sin(alpha_rad) * K + (1 - np.cos(alpha_rad)) * np.dot(K, K)
+
+    # calculate new vector and scale it to the desired distance
+    new_vector = np.dot(R, initial_vector_normalized) * d
+    return new_vector
+
+def angle_between_vectors(a, b):
+    dot_product = np.dot(a, b)
+    
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    
+    cos_theta = dot_product / (norm_a * norm_b)
+    
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+    
+    angle_rad = np.arccos(cos_theta)
+    
+    angle_deg = np.degrees(angle_rad)
+    
+    return angle_deg
 
 def main():
     tx_x, tx_y, tx_z = take_coordinate_input()
@@ -142,7 +102,14 @@ def main():
     print()
 
     x, y, z = calculate_new_tx(tx_x, tx_y, tx_z, angle, distance)
-    print(f"x: {x} ------- y: {y} ------- z: {z}")
+    print("coordinates of the new tx")
+    print(f"x: {x}\ny: {y}\nz: {z}\n")
+
+    # # some debug lines
+    # print()
+    # print(f"Angle between vectors: {angle_between_vectors(tx0_coordinate, np.array([x, y, z]))} degrees")
+    # print(np.linalg.norm(tx0_coordinate), np.linalg.norm(np.array([x, y, z])))
 
 if __name__ == "__main__":
     main()
+
